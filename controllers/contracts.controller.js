@@ -131,15 +131,6 @@ const remove = (req, res) => {
 }
 
 
-const buildQuery = (baseSql, conditions, params) => {
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    return {
-        sql: `${baseSql} ${whereClause}`,
-        params: params
-    };
-};
-
-
 const getSoldProductsInDateRange = (req, res) => {
     const { startDate, endDate } = req.query;
 
@@ -147,8 +138,8 @@ const getSoldProductsInDateRange = (req, res) => {
         return res.status(400).send({ message: "startDate and endDate are required" });
     }
 
-    const baseSql = `
-        SELECT 
+    const sql = `
+        SELECT  
             c.id AS contract_id,
             CONCAT(cust.first_name, ' ', cust.last_name) AS customer_name,
             l.model AS laptop_model,
@@ -160,11 +151,10 @@ const getSoldProductsInDateRange = (req, res) => {
         FROM contracts c
         JOIN customers cust ON c.customer_id = cust.id
         JOIN laptops l ON c.laptop_id = l.id
+        WHERE c.created_at BETWEEN ? AND ?
     `;
 
-    const { sql, params: queryParams } = buildQuery(baseSql, [`c.created_at BETWEEN ? AND ?`], [startDate, endDate]);
-
-    db.query(sql, queryParams, (err, result) => {
+    db.query(sql, [startDate, endDate], (err, result) => {
         if (err) {
             console.error("Database error:", err);
             return res.status(500).send({ message: "Server error", error: err.message });
@@ -180,7 +170,7 @@ const getSoldProductsInDateRange = (req, res) => {
 const getOverdueCustomers = (req, res) => {
     const { startDate, endDate } = req.query;
 
-    const baseSql = `
+    let sql = `
         SELECT 
             c.id AS contract_id,
             CONCAT(cust.first_name, ' ', cust.last_name) AS customer_name,
@@ -190,22 +180,18 @@ const getOverdueCustomers = (req, res) => {
         FROM contracts c
         JOIN customers cust ON c.customer_id = cust.id
         JOIN laptops l ON c.laptop_id = l.id
+        WHERE c.next_payment_date < CURDATE()
+        AND c.payments_remaining > 0
     `;
 
-    const conditions = [
-        `c.next_payment_date < CURDATE()`,
-        `c.payments_remaining > 0`
-    ];
     const params = [];
 
     if (startDate && endDate) {
-        conditions.push(`c.created_at BETWEEN ? AND ?`);
+        sql += ` AND c.created_at BETWEEN ? AND ?`;
         params.push(startDate, endDate);
     }
 
-    const { sql, params: queryParams } = buildQuery(baseSql, conditions, params);
-
-    db.query(sql, queryParams, (err, result) => {
+    db.query(sql, params, (err, result) => {
         if (err) {
             console.error("Database error:", err);
             return res.status(500).send({ message: "Server error", error: err.message });
@@ -217,8 +203,6 @@ const getOverdueCustomers = (req, res) => {
         });
     });
 };
-
-
 
 module.exports = {
     getAll,
